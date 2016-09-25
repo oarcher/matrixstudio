@@ -165,6 +165,35 @@ public class SimpleMatrixRenderer implements MatrixRenderer {
                     }
                 }
             }
+			if(matrix instanceof MatrixULong) {
+				MatrixULong matrixULong = (MatrixULong) matrix;
+				for (int i = SX - 1; i >= 0; i--) {
+					for (int j = SY - 1; j >= 0; j--) {
+						for (int k = SZ - 1; k >= 0; k--) {
+							// cast will fetch the 4 least signifiant bytes, as expected
+							Integer value = (int) matrixULong.getValueAt(i, j, k);
+							int r, g, b, a;
+							r = (value & 255);
+							g = (value >> 8) & 255;
+							b = (value >> 16) & 255;
+							a = (value >> 24) & 255;
+							if(r == 0 && g == 0 && b == 0) a=0;
+							if( (r > 0 || g > 0 || b > 0) && a == 0) a=50;
+
+							if (a > 0) {
+								if (renderMode == 0)
+								drawPoint(i - SX2, j - SY2, k - SZ2, r, g, b, a, SXexp1);
+								if (renderMode == 1 && a == 255)
+								drawWiredCube3D(i - SX2, j - SY2, k - SZ2, r, g, b, 255, SXexp1, 0.95f);
+								if (renderMode == 2 && a == 255)
+								drawCube3D(i - SX2, j - SY2, k - SZ2, r, g, b, a, SXexp1, 0.95f);
+								if (renderMode == 3 && a == 255)
+								drawCube3D(i - SX2, j - SY2, k - SZ2, r, g, b, a, SXexp1, 0.4f);
+							}
+						}
+					}
+				}
+			}
             if(matrix instanceof MatrixFloat) {
                 MatrixFloat matrixFloat = (MatrixFloat) matrix;
                 for (int i=SX-1; i>=0; i--) {

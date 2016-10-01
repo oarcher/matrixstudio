@@ -171,7 +171,7 @@ public class SimpleMatrixRenderer implements MatrixRenderer {
 					for (int j = SY - 1; j >= 0; j--) {
 						for (int k = SZ - 1; k >= 0; k--) {
 							// cast will fetch the 4 least signifiant bytes, as expected
-							Integer value = (int) matrixULong.getValueAt(i, j, k);
+							Integer value = (int) (long) matrixULong.getValueAt(i, j, k);
 							int r, g, b, a;
 							r = (value & 255);
 							g = (value >> 8) & 255;

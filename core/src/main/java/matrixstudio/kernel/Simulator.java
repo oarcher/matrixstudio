@@ -33,6 +33,8 @@ import java.text.ParseException;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.io.PrintStream;
+import java.io.FileOutputStream;
 
 import static org.jocl.CL.CL_BUILD_PROGRAM_FAILURE;
 import static org.jocl.CL.CL_COMPILER_NOT_AVAILABLE;
@@ -65,26 +67,26 @@ import static org.jocl.CL.clSetKernelArg;
 
 public class Simulator implements Runnable {
 
-	public boolean recordingMPEG = false; // Must be changed (?) to be displayed in MatrixStudio 
-	public boolean recordingPNG = false; // Must be changed (?) to be displayed in MatrixStudio 
-	
+	public boolean recordingMPEG = false; // Must be changed (?) to be displayed in MatrixStudio
+	public boolean recordingPNG = false; // Must be changed (?) to be displayed in MatrixStudio
+
 	public interface UserInputProvider {
 		int getButton();
 		int getMouseX();
 		int getMouseY();
 	}
-	
+
 	private final UserInputProvider emptyProvider = new UserInputProvider() {
 		public int getButton() { return 0; }
 		public int getMouseX() { return -1; }
 		public int getMouseY() { return -1; }
 	};
-	
+
 	/** Logger */
 	private final SimulatorContext log;
 
     private int refreshStep = 1;
-    
+
     private int nbSteps=0;
     private long initialSimulationTime=-1;
     private int initialStep = 0;
@@ -94,7 +96,7 @@ public class Simulator implements Runnable {
 
     private ActionMonitor monitor;
     private UserInputProvider inputProvider = emptyProvider;
-    
+
     private cl_device_id device = null;
     private cl_context context = null;
     private cl_command_queue commandQueue   = null;
@@ -102,29 +104,29 @@ public class Simulator implements Runnable {
     private Pointer[] matricesPointer       = null;
     private cl_program program              = null;
     private cl_kernel[] kernels             = null;
-    
+
     private HashMap<String, cl_kernel> clKernelsByName = null;
-    
+
     private HashMap<Task, long[]> globalSizeByTask = null;
-    
+
     private HashMap<Task,cl_event> eventsByTask = null;
     private cl_event[] allEvents = null;
     private HashMap<Task, cl_event[]> dependenciesByTask = null;
-    
+
     private List<Task> orderedTasks = null;
-    
+
     public Simulator(SimulatorContext log) {
     	this.log = log;
     }
-    
+
     public Model getModel() {
     	return log.getModel();
     }
-    
+
     public UserInputProvider getInputProvider() {
 		return inputProvider;
 	}
-    
+
     public void setInputProvider(UserInputProvider inputProvider) {
     	if ( inputProvider != null ) {
     		this.inputProvider = inputProvider;
@@ -132,7 +134,7 @@ public class Simulator implements Runnable {
     		this.inputProvider = emptyProvider;
     	}
 	}
-    
+
     public boolean compileKernelCode() {
         try {
             releaseCL();
@@ -153,7 +155,7 @@ public class Simulator implements Runnable {
             log.error(e.getMessage());
             return false;
         }
-        return true;        
+        return true;
     }
 
     private int evaluateFormula(String formula) throws EvaluationException, ParseException {
@@ -161,7 +163,7 @@ public class Simulator implements Runnable {
     }
 
 	private void initCode() throws EvaluationException, ParseException {
-		
+
 		// creation of openCL code to compile
     	final Model model = getModel();
         final StringBuilder prg = new StringBuilder();
@@ -185,15 +187,24 @@ public class Simulator implements Runnable {
         		}
         	}
         }
-        
+
         // then appends kernels
-        for (Code code : model.getCodeList() ) { 
+        for (Code code : model.getCodeList() ) {
         	if ( code instanceof Kernel ) {
         		final String contents = code.getWholeContents();
         		if ( contents != null ) prg.append(contents);
         	}
         }
-        
+
+				// dump code to file
+				System.out.println("openCL Source code : opencl.c");
+				try (PrintStream out = new PrintStream(new FileOutputStream("opencl.c"))) {
+    			out.print(prg.toString());
+					out.close();
+				} catch (Exception e) {
+  				System.out.println("opencl.c write error :" + e.getClass());
+				}
+
         // Creation of openCL program
         program = clCreateProgramWithSource(context, 1, new String[]{ prg.toString() }, null, null);
         if(program == null) {
@@ -243,14 +254,14 @@ public class Simulator implements Runnable {
                 throw new CLException("There is a failure to allocate resources required by the OpenCL implementation on the host.");
         }
 	}
-    
+
     private void initMatrices() {
 	    // Init of matrices with matrixInit values
 		for(final Matrix matrix : getModel().getMatrixList() ) {
 			matrix.setToInitialValues();
 		}
-	
-	    // Creating java-side pointers to get data from openCL matrices 
+
+	    // Creating java-side pointers to get data from openCL matrices
 	    final int matrixCount = getModel().getMatrixCount();
 		matricesPointer = new Pointer[matrixCount];
 		for ( int i=0; i<matrixCount; i++ ) {
@@ -283,7 +294,7 @@ public class Simulator implements Runnable {
 
         // Enable exceptions and subsequently get error checks
         CL.setExceptionsEnabled(true);
-        
+
         final Model model = getModel();
 		final Scheduler scheduler = model.getScheduler();
 
@@ -302,15 +313,15 @@ public class Simulator implements Runnable {
         if (context == null) {
             throw new CLException("Can't create an openCL context.");
         }
-        
+
         // Get the list of devices associated with the context
         clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, null, numBytes);
         // Obtain the cl_device_id for the first device
         int numDevices = (int) numBytes[0] / Sizeof.cl_device_id;
         cl_device_id devices[] = new cl_device_id[numDevices];
-        
+
         clGetContextInfo(context, CL_CONTEXT_DEVICES, numBytes[0], Pointer.to(devices), null);
-        
+
         // *******************************
         log.log("Device used:" + CLUtil.getString(device, CL_DEVICE_NAME));
 
@@ -320,7 +331,7 @@ public class Simulator implements Runnable {
         commandQueue = clCreateCommandQueue(context, device, CL.CL_NONE, null);
 
         // Initialization of pointers
-        
+
         // Allocate the memory objects for the input- and output data
         final int matrixCount = model.getMatrixCount();
 		log.log("Number of matrices: "+matrixCount);
@@ -336,19 +347,19 @@ public class Simulator implements Runnable {
                 memObjects[t] = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, Sizeof.cl_float * n, matricesPointer[t], null);
         }
     }
-    
+
     private void initKernel() throws EvaluationException, ParseException {
     	 // Create the kernels
         clKernelsByName = new HashMap<String, cl_kernel>();
-        
+
         final Model model = getModel();
         final int matrixCount = model.getMatrixCount();
-		
+
         final List<Kernel> kernelList = model.getKernelList();
         kernels = new cl_kernel[kernelList.size()];
         for(int k=0; k<kernelList.size(); k++) {
         	final String name = kernelList.get(k).getName();
-			
+
         	log.log("Creating kernel: " + name + ".");
             kernels[k] = clCreateKernel(program, name, null);
             if(nbSteps == initialStep) {
@@ -380,24 +391,24 @@ public class Simulator implements Runnable {
 
     private void initScheduler() {
 		final Scheduler scheduler = getModel().getScheduler();
-		
+
 		if(scheduler.getTaskCount() <= 0) {
 			throw new CLException("No task to execute.");
 		}
-		
+
 		orderedTasks = new LinkedList<Task>();
-		
+
 		// constructs task list in order to be enqueued.
 		final HashMap<Task, Integer> postoned = new HashMap<Task, Integer>();
 		final LinkedList<Task> toOrder = new LinkedList<Task>(scheduler.getTaskList());
 		int taskCount = scheduler.getTaskCount();
-		
+
 		// while there are tasks to order
 		// bahh, using a label, I'm not happy with this solution
-		global: 
+		global:
 		while (toOrder.isEmpty() == false ) {
 			final Task task = toOrder.removeFirst();
-			
+
 			// checks if all deps are valid
 			for ( Task in : task.getTaskInList() ) {
 				int index = orderedTasks.indexOf(in);
@@ -412,9 +423,9 @@ public class Simulator implements Runnable {
 						toOrder.addLast(task);
 						continue global;
 					}
-				}				
+				}
 			}
-			
+
 			// task can be scheduled
 			orderedTasks.add(task);
 		}
@@ -426,7 +437,7 @@ public class Simulator implements Runnable {
     	dependenciesByTask = new HashMap<>();
 
     	final List<Task> taskList = orderedTasks;
-    	
+
     	allEvents = new cl_event[taskList.size()];
 
         for (int n = 0; n < taskList.size(); n++) {
@@ -464,7 +475,7 @@ public class Simulator implements Runnable {
 			}
 		}
     }
-    
+
     private void releaseCL() {
 		// Release kernel, program, and memory objects
         if(memObjects != null) {
@@ -474,7 +485,7 @@ public class Simulator implements Runnable {
             memObjects = null;
         }
         if(kernels != null) {
-        	for(int k=0;k<kernels.length;k++) 
+        	for(int k=0;k<kernels.length;k++)
         		CL.clReleaseKernel(kernels[k]);
         }
         kernels = null;
@@ -483,43 +494,43 @@ public class Simulator implements Runnable {
         	program = null;
         }
         if(commandQueue != null) {
-        	CL.clReleaseCommandQueue(commandQueue); 
+        	CL.clReleaseCommandQueue(commandQueue);
         	commandQueue = null;
         }
         if(context != null) {
-        	CL.clReleaseContext(context);           
+        	CL.clReleaseContext(context);
         	context = null;
         }
     }
-    
+
     private void reset() {
-    	
+
     	// Re-init the current matrix to the initial values
 		for(final Matrix matrix : getModel().getMatrixList() ) {
 			matrix.setToInitialValues();
 		}
-		
+
 		clKernelsByName = null;
-		    
+
 		globalSizeByTask = null;
-		    
+
 		eventsByTask = null;
 		allEvents = null;
 		dependenciesByTask = null;
-		    
+
 		orderedTasks = null;
 
 		releaseCL();
-		
+
 		nbSteps = initialStep;
 		initialSimulationTime = -1;
 		internalThread = null;
     }
-    
+
     public int getNbSteps() {
     	return nbSteps;
     }
-    
+
     public void setNbSteps(int t) {
     	nbSteps = t;
     }
@@ -527,23 +538,23 @@ public class Simulator implements Runnable {
     public int getInitialStep() {
     	return initialStep;
     }
-    
+
     public void setInitialStep(int t) {
     	initialStep = t;
     }
-    
+
     public long getInitialSimulationTime() {
     	return initialSimulationTime;
     }
-    
+
     public void setInitialSimulationTime(long t) {
     	initialSimulationTime = t;
     }
-    
+
     public int getRefreshStep() {
 		return refreshStep;
 	}
-    
+
     public void setRefreshStep(int refreshStep) {
 		this.refreshStep = refreshStep;
 	}
@@ -624,14 +635,14 @@ public class Simulator implements Runnable {
         }
         return true;
     }
-    
-    
+
+
     private void executeAllTasks() throws EvaluationException, ParseException {
     	for ( Task task : orderedTasks ) {
     		enqueueTask(task);
     	}
     }
-    
+
     private void enqueueTask(final Task task) throws EvaluationException, ParseException, CLException {
         int repetition = evaluateFormula(task.getRepetition());
         if (repetition <= 0) repetition = 1;
@@ -662,7 +673,7 @@ public class Simulator implements Runnable {
             }
         }
     }
-      
+
     public String GetResultCL(List<Matrix> lst_mat) {
         // Read the output data
         if(commandQueue != null && memObjects != null && matricesPointer != null)
@@ -688,37 +699,37 @@ public class Simulator implements Runnable {
         }
         return null;
     }
-    
+
     public boolean canCompile() {
     	return CLUtil.isClPresent() && isStarted() == false;
     }
-    
-    
+
+
     public boolean canRun() {
     	return CLUtil.isClPresent() && isStarted() == false;
     }
-    
+
     public synchronized boolean isStarted() {
 		return internalThread != null;
 	}
-    
+
     public boolean isRunning() {
 		return running;
 	}
-    
+
     public void setRunning(boolean running) {
 		this.running = running;
 	}
-    
-    
+
+
     public synchronized void start(ActionMonitor monitor) {
     	this.monitor = monitor == null ? ActionMonitor.empty : monitor;
-    	
+
     	setRunning(true);
     	internalThread = new Thread(this);
     	internalThread.start();
     }
-    
+
     public synchronized void stop() {
     	if(internalThread != null)
     		internalThread.interrupt();
@@ -731,7 +742,7 @@ public class Simulator implements Runnable {
 	    	monitor.setTaskName("Simulating");
 	    	while( isStarted() ) {
 	    		if ( isRunning() ) {
-	    			
+
 	    			executeStep(inputProvider.getMouseX(), inputProvider.getMouseY(), inputProvider.getButton());
 	    			// if step failed, break infinite loop.
 
@@ -739,19 +750,19 @@ public class Simulator implements Runnable {
 	    				GetResultCL(getModel().getMatrixList());
 						if(recordingMPEG == true)
 							log.recordMPEG();
-	
+
 					}
 					if(recordingPNG == true)
 						log.recordPNG();
 	    		} else {
-	    			try { 
-	    				Thread.sleep(250); 
+	    			try {
+	    				Thread.sleep(250);
 	    			} catch (InterruptedException e) {
 	    				log.log("Simulation stopped.");
 	    			}
 	    		}
 	    	}
-	    	
+
     	} catch (Throwable e) {
     		// catch any exception.
     		log.error(DiagnosticUtil.createMessage(e));

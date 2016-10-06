@@ -35,6 +35,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.io.PrintStream;
 import java.io.FileOutputStream;
+import java.io.File;
 
 import static org.jocl.CL.CL_BUILD_PROGRAM_FAILURE;
 import static org.jocl.CL.CL_COMPILER_NOT_AVAILABLE;
@@ -196,14 +197,14 @@ public class Simulator implements Runnable {
         	}
         }
 
-				// dump code to file
-				System.out.println("openCL Source code : opencl.c");
-				try (PrintStream out = new PrintStream(new FileOutputStream("opencl.c"))) {
-    			out.print(prg.toString());
-					out.close();
-				} catch (Exception e) {
-  				System.out.println("opencl.c write error :" + e.getClass());
-				}
+        // dump code to file
+        System.out.println("openCL Source code : opencl.bad.c");
+        try (PrintStream out = new PrintStream(new FileOutputStream("opencl.bad.c"))) {
+    		out.print(prg.toString());
+		out.close();
+        } catch (Exception e) {
+        	System.out.println("opencl.bad.c write error :" + e.getClass());
+        }        
 
         // Creation of openCL program
         program = clCreateProgramWithSource(context, 1, new String[]{ prg.toString() }, null, null);
@@ -224,6 +225,13 @@ public class Simulator implements Runnable {
 
         switch (err) {
             case CL_SUCCESS:
+                // rename opencl.bad.c to opencl.c
+                File bad = new File("opencl.bad.c");
+                File good= new File("opencl.c");
+                boolean success = bad.renameTo(good);
+                if(success){
+                    System.out.println("Build Ok : mv opencl.bad.c opencl.c");
+                }
                 break;
 
             case CL_INVALID_PROGRAM:
